@@ -34,9 +34,16 @@ async function verify() {
                 headers: { Cookie: cookie[0] }
             });
             console.log('Me Status:', meRes.status, 'User:', meRes.data.user.sub);
+
+            // 4. Test /balance
+            console.log('\nTesting /balance...');
+            const balanceRes = await axios.get(`${BASE_URL}/balance`, {
+                headers: { Cookie: cookie[0] }
+            });
+            console.log('Balance Status:', balanceRes.status, 'Balance:', balanceRes.data.balance);
         }
 
-        // 4. Test Logout
+        // 5. Test Logout
         console.log('\nTesting /logout...');
         const logoutRes = await axios.post(`${BASE_URL}/logout`, {}, {
             headers: { Cookie: cookie ? cookie[0] : '' }

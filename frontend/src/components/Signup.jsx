@@ -3,82 +3,65 @@ import axios from 'axios';
 import { useNavigate, Link } from 'react-router-dom';
 
 const Signup = () => {
-    const [formData, setFormData] = useState({
-        username: '',
-        email: '',
-        phone: '',
-        password: ''
-    });
+    const [formData, setFormData] = useState({ username: '', email: '', phone: '', password: '' });
     const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
 
-    const handleChange = (e) => {
-        setFormData({ ...formData, [e.target.name]: e.target.value });
-    };
+    const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
+        setLoading(true);
         try {
             await axios.post('http://localhost:5000/register', formData);
             navigate('/login');
         } catch (err) {
             setError(err.response?.data?.message || 'Registration failed');
+        } finally {
+            setLoading(false);
         }
     };
 
     return (
-        <div className="container">
-            <h1>Create Account</h1>
-            <p className="subtitle">Join KodNest to get started</p>
+        <div className="auth-page">
+            <div className="container">
+                <div className="auth-logo">
+                    <span className="auth-logo-icon">🏦</span>
+                    <span className="auth-logo-name">NestBank</span>
+                </div>
 
-            {error && <p style={{ color: '#ef4444', textAlign: 'center', marginBottom: '1rem' }}>{error}</p>}
+                <h1>Open Account</h1>
+                <p className="subtitle">Join NestBank — your account starts with ₹10,000</p>
 
-            <form onSubmit={handleSubmit}>
-                <div className="form-group">
-                    <label>Username</label>
-                    <input
-                        type="text"
-                        name="username"
-                        placeholder="johndoe"
-                        onChange={handleChange}
-                        required
-                    />
-                </div>
-                <div className="form-group">
-                    <label>Email</label>
-                    <input
-                        type="email"
-                        name="email"
-                        placeholder="john@example.com"
-                        onChange={handleChange}
-                        required
-                    />
-                </div>
-                <div className="form-group">
-                    <label>Phone</label>
-                    <input
-                        type="text"
-                        name="phone"
-                        placeholder="+1 234 567 890"
-                        onChange={handleChange}
-                    />
-                </div>
-                <div className="form-group">
-                    <label>Password</label>
-                    <input
-                        type="password"
-                        name="password"
-                        placeholder="••••••••"
-                        onChange={handleChange}
-                        required
-                    />
-                </div>
-                <button type="submit">Sign Up</button>
-            </form>
+                {error && <p style={{ color: '#f87171', textAlign: 'center', marginBottom: '1rem', fontSize: '0.875rem' }}>⚠️ {error}</p>}
 
-            <div className="footer-link">
-                Already have an account? <Link to="/login">Log in</Link>
+                <form onSubmit={handleSubmit}>
+                    <div className="form-group">
+                        <label>Username</label>
+                        <input type="text" name="username" placeholder="johndoe" onChange={handleChange} required />
+                    </div>
+                    <div className="form-group">
+                        <label>Email</label>
+                        <input type="email" name="email" placeholder="john@example.com" onChange={handleChange} required />
+                    </div>
+                    <div className="form-group">
+                        <label>Phone</label>
+                        <input type="text" name="phone" placeholder="+91 98765 43210" onChange={handleChange} />
+                    </div>
+                    <div className="form-group">
+                        <label>Password</label>
+                        <input type="password" name="password" placeholder="••••••••" onChange={handleChange} required />
+                    </div>
+                    <button type="submit" disabled={loading}>
+                        {loading ? 'Creating Account...' : '🏦 Open Account'}
+                    </button>
+                </form>
+
+                <div className="footer-link">
+                    Already a customer? <Link to="/login">Sign In</Link>
+                </div>
             </div>
         </div>
     );
