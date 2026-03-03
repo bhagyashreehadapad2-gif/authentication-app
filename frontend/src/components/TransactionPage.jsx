@@ -18,7 +18,7 @@ const TransactionPage = () => {
     const [submitting, setSubmitting] = useState(false);
 
     useEffect(() => {
-        axios.get('http://localhost:5000/me', { withCredentials: true })
+        axios.get(`${import.meta.env.VITE_API_URL}/me`, { withCredentials: true })
             .then(res => { setUser(res.data.user); setLoading(false); })
             .catch(() => navigate('/login'));
     }, [navigate]);
@@ -29,7 +29,7 @@ const TransactionPage = () => {
     };
 
     const refreshBalance = async () => {
-        const res = await axios.get('http://localhost:5000/me', { withCredentials: true });
+        const res = await axios.get(`${import.meta.env.VITE_API_URL}/me`, { withCredentials: true });
         setUser(res.data.user);
     };
 
@@ -37,7 +37,7 @@ const TransactionPage = () => {
         e.preventDefault();
         setSubmitting(true);
         try {
-            await axios.post('http://localhost:5000/transfer', transferForm, { withCredentials: true });
+            await axios.post(`${import.meta.env.VITE_API_URL}/transfer`, transferForm, { withCredentials: true });
             await refreshBalance();
             showStatus('success', `₹${transferForm.amount} transferred to ${transferForm.recipient} successfully!`);
             setTransferForm({ recipient: '', amount: '', description: '' });
@@ -50,7 +50,7 @@ const TransactionPage = () => {
         e.preventDefault();
         setSubmitting(true);
         try {
-            await axios.post('http://localhost:5000/deposit', depositForm, { withCredentials: true });
+            await axios.post(`${import.meta.env.VITE_API_URL}/deposit`, depositForm, { withCredentials: true });
             await refreshBalance();
             showStatus('success', `₹${depositForm.amount} deposited successfully!`);
             setDepositForm({ amount: '', description: '' });
@@ -63,7 +63,7 @@ const TransactionPage = () => {
         e.preventDefault();
         setSubmitting(true);
         try {
-            await axios.post('http://localhost:5000/withdraw', withdrawForm, { withCredentials: true });
+            await axios.post(`${import.meta.env.VITE_API_URL}/withdraw`, withdrawForm, { withCredentials: true });
             await refreshBalance();
             showStatus('success', `₹${withdrawForm.amount} withdrawn successfully!`);
             setWithdrawForm({ amount: '', description: '' });

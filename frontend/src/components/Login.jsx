@@ -15,7 +15,7 @@ const Login = () => {
         setError('');
         setLoading(true);
         try {
-            await axios.post('http://localhost:5000/login', formData, { withCredentials: true });
+            await axios.post(`${import.meta.env.VITE_API_URL}/login`, formData, { withCredentials: true });
             navigate('/dashboard');
         } catch (err) {
             setError(err.response?.data?.message || 'Login failed');

@@ -7,7 +7,7 @@ const Navbar = ({ user }) => {
 
     const handleLogout = async () => {
         try {
-            await axios.post('http://localhost:5000/logout', {}, { withCredentials: true });
+            await axios.post(`${import.meta.env.VITE_API_URL}/logout`, {}, { withCredentials: true });
             navigate('/login');
         } catch {
             navigate('/login');

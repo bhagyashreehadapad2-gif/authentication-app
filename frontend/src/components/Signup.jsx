@@ -15,7 +15,7 @@ const Signup = () => {
         setError('');
         setLoading(true);
         try {
-            await axios.post('http://localhost:5000/register', formData);
+            await axios.post(`${import.meta.env.VITE_API_URL}/register`, formData);
             navigate('/login');
         } catch (err) {
             setError(err.response?.data?.message || 'Registration failed');

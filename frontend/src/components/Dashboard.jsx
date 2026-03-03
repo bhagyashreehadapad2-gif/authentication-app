@@ -13,8 +13,8 @@ const Dashboard = () => {
         const fetchData = async () => {
             try {
                 const [meRes, txRes] = await Promise.all([
-                    axios.get('http://localhost:5000/me', { withCredentials: true }),
-                    axios.get('http://localhost:5000/transactions', { withCredentials: true })
+                    axios.get(`${import.meta.env.VITE_API_URL}/me`, { withCredentials: true }),
+                    axios.get(`${import.meta.env.VITE_API_URL}/transactions`, { withCredentials: true })
                 ]);
                 setUser(meRes.data.user);
                 setTransactions(txRes.data.transactions || []);
