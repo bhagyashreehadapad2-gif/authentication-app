@@ -52,15 +52,27 @@ const requireAuth = (req, res, next) => {
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
-// TRANSACTIONS (Moved up for debugging)
-app.get('/transactions', requireAuth, async (req, res) => {
+// ─── Health Check ─────────────────────────────────────────────────────────────
+app.get('/api/health', (req, res) => {
+    res.json({
+        status: 'UP',
+        timestamp: new Date().toISOString(),
+        env: process.env.NODE_ENV,
+        db_host: process.env.DB_HOST ? 'Configured' : 'Missing'
+    });
+});
+
+// ─── Router Setup ─────────────────────────────────────────────────────────────
+const router = express.Router();
+
+// TRANSACTIONS
+router.get('/transactions', requireAuth, async (req, res) => {
     console.log(`Fetching transactions for: ${req.user.sub}`);
     try {
         const userTransactions = await db.execute(
             'SELECT * FROM bank_transactions WHERE user = ? ORDER BY timestamp DESC',
             [req.user.sub]
         );
-        console.log(`Found ${userTransactions.length} transactions`);
         res.json({ transactions: userTransactions });
     } catch (err) {
         console.error('Error fetching transactions:', err);
@@ -69,7 +81,7 @@ app.get('/transactions', requireAuth, async (req, res) => {
 });
 
 // REGISTER
-app.post('/register', async (req, res) => {
+router.post('/register', async (req, res) => {
     try {
         const { username, email, phone, password } = req.body;
         if (!username || !email || !password)
@@ -90,7 +102,6 @@ app.post('/register', async (req, res) => {
         const accountNumber = generateAccountNumber(uid);
         await db.execute('UPDATE bank_users SET accountNumber = ? WHERE uid = ?', [accountNumber, uid]);
 
-        console.log(`User registered successfully: ${username} (uid: ${uid}). Sending 201 response.`);
         res.status(201).json({ message: 'Registration successful' });
     } catch (err) {
         console.error(err);
@@ -99,10 +110,9 @@ app.post('/register', async (req, res) => {
 });
 
 // LOGIN
-app.post('/login', async (req, res) => {
+router.post('/login', async (req, res) => {
     try {
         const { username, password } = req.body;
-        console.log(`Login attempt for: ${username}`);
         const rows = await db.execute('SELECT * FROM bank_users WHERE uname = ?', [username]);
         const user = rows[0];
         if (!user) return res.status(401).json({ message: 'Invalid credentials' });
@@ -124,7 +134,6 @@ app.post('/login', async (req, res) => {
             maxAge: 24 * 60 * 60 * 1000
         });
 
-        console.log(`Login Success: ${username}. Cookie set.`);
         res.status(200).json({ message: 'Login successful' });
     } catch (err) {
         console.error(err);
@@ -133,13 +142,13 @@ app.post('/login', async (req, res) => {
 });
 
 // LOGOUT
-app.post('/logout', (req, res) => {
+router.post('/logout', (req, res) => {
     res.clearCookie('token');
     res.status(200).json({ message: 'Logged out successfully' });
 });
 
-// ME — full user info
-app.get('/me', requireAuth, async (req, res) => {
+// ME
+router.get('/me', requireAuth, async (req, res) => {
     const rows = await db.execute('SELECT uname, email, phone, role, balance, accountNumber FROM bank_users WHERE uname = ?', [req.user.sub]);
     const user = rows[0];
     if (!user) return res.status(404).json({ message: 'User not found' });
@@ -156,7 +165,7 @@ app.get('/me', requireAuth, async (req, res) => {
 });
 
 // BALANCE
-app.get('/balance', requireAuth, async (req, res) => {
+router.get('/balance', requireAuth, async (req, res) => {
     const rows = await db.execute('SELECT balance, accountNumber FROM bank_users WHERE uname = ?', [req.user.sub]);
     const user = rows[0];
     if (!user) return res.status(404).json({ message: 'User not found' });
@@ -164,14 +173,10 @@ app.get('/balance', requireAuth, async (req, res) => {
 });
 
 // DEPOSIT
-app.post('/deposit', requireAuth, async (req, res) => {
+router.post('/deposit', requireAuth, async (req, res) => {
     const { amount, description } = req.body;
     const depositAmount = parseFloat(amount);
-
-    if (isNaN(depositAmount) || depositAmount <= 0)
-        return res.status(400).json({ message: 'Invalid deposit amount' });
-    if (depositAmount > 1000000)
-        return res.status(400).json({ message: 'Maximum deposit limit is ₹10,00,000' });
+    if (isNaN(depositAmount) || depositAmount <= 0) return res.status(400).json({ message: 'Invalid deposit amount' });
 
     try {
         const rows = await db.execute('SELECT balance FROM bank_users WHERE uname = ?', [req.user.sub]);
@@ -195,20 +200,17 @@ app.post('/deposit', requireAuth, async (req, res) => {
 });
 
 // WITHDRAW
-app.post('/withdraw', requireAuth, async (req, res) => {
+router.post('/withdraw', requireAuth, async (req, res) => {
     const { amount, description } = req.body;
     const withdrawAmount = parseFloat(amount);
-
-    if (isNaN(withdrawAmount) || withdrawAmount <= 0)
-        return res.status(400).json({ message: 'Invalid withdrawal amount' });
+    if (isNaN(withdrawAmount) || withdrawAmount <= 0) return res.status(400).json({ message: 'Invalid withdrawal amount' });
 
     try {
         const rows = await db.execute('SELECT balance FROM bank_users WHERE uname = ?', [req.user.sub]);
         const user = rows[0];
         if (!user) return res.status(404).json({ message: 'User not found' });
 
-        if (user.balance < withdrawAmount)
-            return res.status(400).json({ message: 'Insufficient balance' });
+        if (user.balance < withdrawAmount) return res.status(400).json({ message: 'Insufficient balance' });
 
         const newBalance = parseFloat(user.balance) - withdrawAmount;
         await db.execute('UPDATE bank_users SET balance = ? WHERE uname = ?', [newBalance, req.user.sub]);
@@ -227,17 +229,14 @@ app.post('/withdraw', requireAuth, async (req, res) => {
 });
 
 // TRANSFER
-app.post('/transfer', requireAuth, async (req, res) => {
+router.post('/transfer', requireAuth, async (req, res) => {
     const { recipient, amount, description } = req.body;
     const transferAmount = parseFloat(amount);
-
-    if (!recipient || isNaN(transferAmount) || transferAmount <= 0)
-        return res.status(400).json({ message: 'Invalid recipient or amount' });
+    if (!recipient || isNaN(transferAmount) || transferAmount <= 0) return res.status(400).json({ message: 'Invalid recipient or amount' });
 
     try {
         const [senderRows] = await db.pool.execute('SELECT uname, balance FROM bank_users WHERE uname = ?', [req.user.sub]);
         const [receiverRows] = await db.pool.execute('SELECT uname, balance FROM bank_users WHERE uname = ?', [recipient]);
-
         const sender = senderRows[0];
         const receiver = receiverRows[0];
 
@@ -248,7 +247,6 @@ app.post('/transfer', requireAuth, async (req, res) => {
         const timestamp = new Date().toISOString();
         const desc = description || `Transfer to ${receiver.uname}`;
 
-        // Perform transaction (ideally this should be an actual SQL transaction)
         await db.execute('UPDATE bank_users SET balance = balance - ? WHERE uname = ?', [transferAmount, sender.uname]);
         await db.execute('UPDATE bank_users SET balance = balance + ? WHERE uname = ?', [transferAmount, receiver.uname]);
 
@@ -269,21 +267,9 @@ app.post('/transfer', requireAuth, async (req, res) => {
     }
 });
 
-// Route moved up
-
-// TRANSACTIONS (original route)
-app.get('/bank_transactions', requireAuth, async (req, res) => {
-    try {
-        const userTransactions = await db.execute(
-            'SELECT * FROM bank_transactions WHERE user = ? ORDER BY timestamp DESC',
-            [req.user.sub]
-        );
-        res.json({ bank_transactions: userTransactions });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: 'Server error fetching bank_transactions' });
-    }
-});
+// Mount the router under both /api and / to handle all routing scenarios
+app.use('/api', router);
+app.use('/', router);
 
 app.use((req, res) => {
     console.log(`[404 NOT FOUND] ${req.method} ${req.url}`);

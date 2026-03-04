@@ -19,7 +19,9 @@ const Signup = () => {
             await axios.post(`${apiUrl}/register`, formData);
             navigate('/login');
         } catch (err) {
-            setError(err.response?.data?.message || 'Registration failed');
+            console.error('Registration Failed:', err.response?.data || err.message);
+            const status = err.response?.status ? ` (Status: ${err.response.status})` : '';
+            setError((err.response?.data?.message || 'Registration failed') + status);
         } finally {
             setLoading(false);
         }
