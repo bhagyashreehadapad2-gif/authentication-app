@@ -15,8 +15,9 @@ const Login = () => {
         setError('');
         setLoading(true);
         try {
-            console.log('Sending login request to:', `${import.meta.env.VITE_API_URL}/login`);
-            const res = await axios.post(`${import.meta.env.VITE_API_URL}/login`, formData, { withCredentials: true });
+            const apiUrl = import.meta.env.VITE_API_URL || '/api';
+            console.log('Sending login request to:', `${apiUrl}/login`);
+            const res = await axios.post(`${apiUrl}/login`, formData, { withCredentials: true });
             console.log('Login Response:', res.status, res.data);
             navigate('/dashboard');
         } catch (err) {

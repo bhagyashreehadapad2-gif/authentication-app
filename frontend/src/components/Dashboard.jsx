@@ -12,9 +12,10 @@ const Dashboard = () => {
     useEffect(() => {
         const fetchData = async () => {
             try {
+                const apiUrl = import.meta.env.VITE_API_URL || '/api';
                 const [meRes, txRes] = await Promise.all([
-                    axios.get(`${import.meta.env.VITE_API_URL}/me`, { withCredentials: true }),
-                    axios.get(`${import.meta.env.VITE_API_URL}/transactions`, { withCredentials: true })
+                    axios.get(`${apiUrl}/me`, { withCredentials: true }),
+                    axios.get(`${apiUrl}/transactions`, { withCredentials: true })
                 ]);
                 setUser(meRes.data.user);
                 setTransactions(txRes.data.transactions || []);
