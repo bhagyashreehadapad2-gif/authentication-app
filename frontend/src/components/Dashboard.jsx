@@ -18,7 +18,9 @@ const Dashboard = () => {
                 ]);
                 setUser(meRes.data.user);
                 setTransactions(txRes.data.transactions || []);
-            } catch {
+                console.log('Dashboard data fetched successfully:', meRes.data.user);
+            } catch (err) {
+                console.error('Dashboard fetch error:', err.response?.data || err.message);
                 navigate('/login');
             } finally {
                 setLoading(false);

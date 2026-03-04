@@ -11,11 +11,22 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors({
-    origin: true, // Allow all origins for now to avoid deployment issues
+    origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:5176', 'http://localhost:3000'],
     credentials: true
 }));
 app.use(express.json());
 app.use(cookieParser());
+
+app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    next();
+});
+
+console.log('--- Server Config ---');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('JWT_SECRET set:', !!process.env.JWT_SECRET);
+console.log('DB_HOST:', process.env.DB_HOST);
+console.log('---------------------');
 
 // In-Memory Database (REMOVED - Using MySQL)
 // JWT Config
@@ -29,14 +40,33 @@ const requireAuth = (req, res, next) => {
     const token = req.cookies.token;
     if (!token) return res.status(401).json({ message: 'Unauthorized' });
     try {
-        req.user = jwt.verify(token, JWT_SECRET);
+        const decoded = jwt.verify(token, JWT_SECRET);
+        console.log(`Auth Success: ${decoded.sub}`);
+        req.user = decoded;
         next();
-    } catch {
+    } catch (err) {
+        console.warn(`Auth Failed: ${err.message}`);
         res.status(401).json({ message: 'Invalid token' });
     }
 };
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
+
+// TRANSACTIONS (Moved up for debugging)
+app.get('/transactions', requireAuth, async (req, res) => {
+    console.log(`Fetching transactions for: ${req.user.sub}`);
+    try {
+        const userTransactions = await db.execute(
+            'SELECT * FROM bank_transactions WHERE user = ? ORDER BY timestamp DESC',
+            [req.user.sub]
+        );
+        console.log(`Found ${userTransactions.length} transactions`);
+        res.json({ transactions: userTransactions });
+    } catch (err) {
+        console.error('Error fetching transactions:', err);
+        res.status(500).json({ message: 'Server error fetching transactions' });
+    }
+});
 
 // REGISTER
 app.post('/register', async (req, res) => {
@@ -45,7 +75,7 @@ app.post('/register', async (req, res) => {
         if (!username || !email || !password)
             return res.status(400).json({ message: 'Missing required fields' });
 
-        const existingUser = await db.execute('SELECT * FROM users WHERE uname = ? OR email = ?', [username, email]);
+        const existingUser = await db.execute('SELECT * FROM bank_users WHERE uname = ? OR email = ?', [username, email]);
         if (existingUser.length > 0) {
             if (existingUser[0].uname === username) return res.status(409).json({ message: 'Username already taken' });
             return res.status(409).json({ message: 'Email already registered' });
@@ -53,12 +83,12 @@ app.post('/register', async (req, res) => {
 
         const hashedPassword = await bcrypt.hash(password, 10);
         const result = await db.execute(
-            'INSERT INTO users (uname, email, phone, password, balance) VALUES (?, ?, ?, ?, ?)',
+            'INSERT INTO bank_users (uname, email, phone, password, balance) VALUES (?, ?, ?, ?, ?)',
             [username, email, phone || '', hashedPassword, 10000.00]
         );
         const uid = result.insertId;
         const accountNumber = generateAccountNumber(uid);
-        await db.execute('UPDATE users SET accountNumber = ? WHERE uid = ?', [accountNumber, uid]);
+        await db.execute('UPDATE bank_users SET accountNumber = ? WHERE uid = ?', [accountNumber, uid]);
 
         console.log(`User registered successfully: ${username} (uid: ${uid}). Sending 201 response.`);
         res.status(201).json({ message: 'Registration successful' });
@@ -72,7 +102,8 @@ app.post('/register', async (req, res) => {
 app.post('/login', async (req, res) => {
     try {
         const { username, password } = req.body;
-        const rows = await db.execute('SELECT * FROM users WHERE uname = ?', [username]);
+        console.log(`Login attempt for: ${username}`);
+        const rows = await db.execute('SELECT * FROM bank_users WHERE uname = ?', [username]);
         const user = rows[0];
         if (!user) return res.status(401).json({ message: 'Invalid credentials' });
 
@@ -85,13 +116,15 @@ app.post('/login', async (req, res) => {
             { algorithm: 'HS256', expiresIn: '24h' }
         );
 
+        const isProduction = process.env.NODE_ENV === 'production';
         res.cookie('token', token, {
             httpOnly: true,
-            secure: true,
-            sameSite: 'none',
+            secure: isProduction,
+            sameSite: isProduction ? 'none' : 'lax',
             maxAge: 24 * 60 * 60 * 1000
         });
 
+        console.log(`Login Success: ${username}. Cookie set.`);
         res.status(200).json({ message: 'Login successful' });
     } catch (err) {
         console.error(err);
@@ -107,7 +140,7 @@ app.post('/logout', (req, res) => {
 
 // ME — full user info
 app.get('/me', requireAuth, async (req, res) => {
-    const rows = await db.execute('SELECT uname, email, phone, role, balance, accountNumber FROM users WHERE uname = ?', [req.user.sub]);
+    const rows = await db.execute('SELECT uname, email, phone, role, balance, accountNumber FROM bank_users WHERE uname = ?', [req.user.sub]);
     const user = rows[0];
     if (!user) return res.status(404).json({ message: 'User not found' });
     res.json({
@@ -124,7 +157,7 @@ app.get('/me', requireAuth, async (req, res) => {
 
 // BALANCE
 app.get('/balance', requireAuth, async (req, res) => {
-    const rows = await db.execute('SELECT balance, accountNumber FROM users WHERE uname = ?', [req.user.sub]);
+    const rows = await db.execute('SELECT balance, accountNumber FROM bank_users WHERE uname = ?', [req.user.sub]);
     const user = rows[0];
     if (!user) return res.status(404).json({ message: 'User not found' });
     res.json({ balance: user.balance, accountNumber: user.accountNumber });
@@ -141,16 +174,16 @@ app.post('/deposit', requireAuth, async (req, res) => {
         return res.status(400).json({ message: 'Maximum deposit limit is ₹10,00,000' });
 
     try {
-        const rows = await db.execute('SELECT balance FROM users WHERE uname = ?', [req.user.sub]);
+        const rows = await db.execute('SELECT balance FROM bank_users WHERE uname = ?', [req.user.sub]);
         const user = rows[0];
         if (!user) return res.status(404).json({ message: 'User not found' });
 
         const newBalance = parseFloat(user.balance) + depositAmount;
-        await db.execute('UPDATE users SET balance = ? WHERE uname = ?', [newBalance, req.user.sub]);
+        await db.execute('UPDATE bank_users SET balance = ? WHERE uname = ?', [newBalance, req.user.sub]);
 
         const timestamp = new Date().toISOString();
         await db.execute(
-            'INSERT INTO transactions (user, other_user, amount, type, description, timestamp) VALUES (?, ?, ?, ?, ?, ?)',
+            'INSERT INTO bank_transactions (user, other_user, amount, type, description, timestamp) VALUES (?, ?, ?, ?, ?, ?)',
             [req.user.sub, 'Self', depositAmount, 'CREDIT', description || 'Deposit', timestamp]
         );
 
@@ -170,7 +203,7 @@ app.post('/withdraw', requireAuth, async (req, res) => {
         return res.status(400).json({ message: 'Invalid withdrawal amount' });
 
     try {
-        const rows = await db.execute('SELECT balance FROM users WHERE uname = ?', [req.user.sub]);
+        const rows = await db.execute('SELECT balance FROM bank_users WHERE uname = ?', [req.user.sub]);
         const user = rows[0];
         if (!user) return res.status(404).json({ message: 'User not found' });
 
@@ -178,11 +211,11 @@ app.post('/withdraw', requireAuth, async (req, res) => {
             return res.status(400).json({ message: 'Insufficient balance' });
 
         const newBalance = parseFloat(user.balance) - withdrawAmount;
-        await db.execute('UPDATE users SET balance = ? WHERE uname = ?', [newBalance, req.user.sub]);
+        await db.execute('UPDATE bank_users SET balance = ? WHERE uname = ?', [newBalance, req.user.sub]);
 
         const timestamp = new Date().toISOString();
         await db.execute(
-            'INSERT INTO transactions (user, other_user, amount, type, description, timestamp) VALUES (?, ?, ?, ?, ?, ?)',
+            'INSERT INTO bank_transactions (user, other_user, amount, type, description, timestamp) VALUES (?, ?, ?, ?, ?, ?)',
             [req.user.sub, 'Self', withdrawAmount, 'DEBIT', description || 'Withdrawal', timestamp]
         );
 
@@ -202,8 +235,8 @@ app.post('/transfer', requireAuth, async (req, res) => {
         return res.status(400).json({ message: 'Invalid recipient or amount' });
 
     try {
-        const [senderRows] = await db.pool.execute('SELECT uname, balance FROM users WHERE uname = ?', [req.user.sub]);
-        const [receiverRows] = await db.pool.execute('SELECT uname, balance FROM users WHERE uname = ?', [recipient]);
+        const [senderRows] = await db.pool.execute('SELECT uname, balance FROM bank_users WHERE uname = ?', [req.user.sub]);
+        const [receiverRows] = await db.pool.execute('SELECT uname, balance FROM bank_users WHERE uname = ?', [recipient]);
 
         const sender = senderRows[0];
         const receiver = receiverRows[0];
@@ -216,19 +249,19 @@ app.post('/transfer', requireAuth, async (req, res) => {
         const desc = description || `Transfer to ${receiver.uname}`;
 
         // Perform transaction (ideally this should be an actual SQL transaction)
-        await db.execute('UPDATE users SET balance = balance - ? WHERE uname = ?', [transferAmount, sender.uname]);
-        await db.execute('UPDATE users SET balance = balance + ? WHERE uname = ?', [transferAmount, receiver.uname]);
+        await db.execute('UPDATE bank_users SET balance = balance - ? WHERE uname = ?', [transferAmount, sender.uname]);
+        await db.execute('UPDATE bank_users SET balance = balance + ? WHERE uname = ?', [transferAmount, receiver.uname]);
 
         await db.execute(
-            'INSERT INTO transactions (user, other_user, amount, type, description, timestamp) VALUES (?, ?, ?, ?, ?, ?)',
+            'INSERT INTO bank_transactions (user, other_user, amount, type, description, timestamp) VALUES (?, ?, ?, ?, ?, ?)',
             [sender.uname, receiver.uname, transferAmount, 'DEBIT', desc, timestamp]
         );
         await db.execute(
-            'INSERT INTO transactions (user, other_user, amount, type, description, timestamp) VALUES (?, ?, ?, ?, ?, ?)',
+            'INSERT INTO bank_transactions (user, other_user, amount, type, description, timestamp) VALUES (?, ?, ?, ?, ?, ?)',
             [receiver.uname, sender.uname, transferAmount, 'CREDIT', `Transfer from ${sender.uname}`, timestamp]
         );
 
-        const [newBalRows] = await db.pool.execute('SELECT balance FROM users WHERE uname = ?', [sender.uname]);
+        const [newBalRows] = await db.pool.execute('SELECT balance FROM bank_users WHERE uname = ?', [sender.uname]);
         res.status(200).json({ message: 'Transfer successful', newBalance: newBalRows[0].balance });
     } catch (err) {
         console.error(err);
@@ -236,18 +269,25 @@ app.post('/transfer', requireAuth, async (req, res) => {
     }
 });
 
-// TRANSACTIONS
-app.get('/transactions', requireAuth, async (req, res) => {
+// Route moved up
+
+// TRANSACTIONS (original route)
+app.get('/bank_transactions', requireAuth, async (req, res) => {
     try {
         const userTransactions = await db.execute(
-            'SELECT * FROM transactions WHERE user = ? ORDER BY timestamp DESC',
+            'SELECT * FROM bank_transactions WHERE user = ? ORDER BY timestamp DESC',
             [req.user.sub]
         );
-        res.json({ transactions: userTransactions });
+        res.json({ bank_transactions: userTransactions });
     } catch (err) {
         console.error(err);
-        res.status(500).json({ message: 'Server error fetching transactions' });
+        res.status(500).json({ message: 'Server error fetching bank_transactions' });
     }
+});
+
+app.use((req, res) => {
+    console.log(`[404 NOT FOUND] ${req.method} ${req.url}`);
+    res.status(404).json({ error: 'Route not found', path: req.url, method: req.method });
 });
 
 module.exports = app; // For Vercel environment

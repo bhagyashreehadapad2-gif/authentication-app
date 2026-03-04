@@ -4,7 +4,7 @@ const setup = async () => {
   try {
     // MySQL Users table
     await execute(`
-      CREATE TABLE IF NOT EXISTS users (
+      CREATE TABLE IF NOT EXISTS bank_users (
         uid INT AUTO_INCREMENT PRIMARY KEY,
         uname VARCHAR(255) UNIQUE NOT NULL,
         email VARCHAR(255) UNIQUE NOT NULL,
@@ -19,7 +19,7 @@ const setup = async () => {
 
     // MySQL Transactions table
     await execute(`
-      CREATE TABLE IF NOT EXISTS transactions (
+      CREATE TABLE IF NOT EXISTS bank_transactions (
         id INT AUTO_INCREMENT PRIMARY KEY,
         user VARCHAR(255) NOT NULL,
         other_user VARCHAR(255) NOT NULL,
@@ -31,16 +31,16 @@ const setup = async () => {
     `);
     console.log('MySQL Transactions table ensured');
 
-    // Seed demo users if empty
-    const users = await execute('SELECT * FROM users LIMIT 1');
-    if (users.length === 0) {
+    // Seed demo bank_users if empty
+    const bank_users = await execute('SELECT * FROM bank_users LIMIT 1');
+    if (bank_users.length === 0) {
       const bcrypt = require('bcrypt');
       const pass = await bcrypt.hash('demo123', 10);
-      await execute('INSERT INTO users (uname, email, phone, password, balance, accountNumber) VALUES (?, ?, ?, ?, ?, ?)',
+      await execute('INSERT INTO bank_users (uname, email, phone, password, balance, accountNumber) VALUES (?, ?, ?, ?, ?, ?)',
         ['demo1', 'demo1@bank.com', '9876543210', pass, 25000.00, '400000000001']);
-      await execute('INSERT INTO users (uname, email, phone, password, balance, accountNumber) VALUES (?, ?, ?, ?, ?, ?)',
+      await execute('INSERT INTO bank_users (uname, email, phone, password, balance, accountNumber) VALUES (?, ?, ?, ?, ?, ?)',
         ['demo2', 'demo2@bank.com', '9876543211', pass, 15000.00, '400000000002']);
-      console.log('Demo users seeded');
+      console.log('Demo bank_users seeded');
     }
 
     process.exit(0);

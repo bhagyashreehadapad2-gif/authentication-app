@@ -1,20 +1,20 @@
-const { Client } = require('pg');
+const mysql = require('mysql2/promise');
 require('dotenv').config();
-
-const client = new Client({
-    connectionString: process.env.DATABASE_URL,
-    ssl: {
-        rejectUnauthorized: false
-    }
-});
 
 async function testConn() {
     try {
-        await client.connect();
-        console.log('Successfully connected!');
-        const res = await client.query('SELECT NOW()');
-        console.log('Current time from DB:', res.rows[0]);
-        await client.end();
+        const connection = await mysql.createConnection({
+            host: process.env.DB_HOST,
+            user: process.env.DB_USER,
+            password: process.env.DB_PASSWORD,
+            database: process.env.DB_NAME,
+            port: parseInt(process.env.DB_PORT),
+            ssl: { rejectUnauthorized: false }
+        });
+        console.log('Successfully connected to MySQL!');
+        const [rows] = await connection.execute('SELECT NOW() as currentTime');
+        console.log('Current time from DB:', rows[0].currentTime);
+        await connection.end();
     } catch (err) {
         console.error('Connection failed:', err.message);
     }
